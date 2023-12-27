@@ -418,7 +418,14 @@ function quick_cancel(d)
     end
 end
 
-function quick_cancel(x, y)
+quick_cancel(x::T, y::BasicSymbolic) where {T} = quick_cancel(Value{T}(x), y)
+quick_cancel(x::BasicSymbolic, y::T) where {T} = quick_cancel(x, Value{T}(y))
+quick_cancel(x::T1, y::T2) where {T1, T2} = quick_cancel(Value{T1}(x), Value{T2}(y))
+
+function quick_cancel(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
+    x isa Symbolic || (x = Value{typeof(x)}(x))
+    y isa Symbolic || (y = Value{typeof(x)}(x))
+    (isval(x) || isval(y)) && return (x, y)
     if ispow(x) && ispow(y)
         return quick_powpow(x, y)
     elseif ismul(x) && ispow(y)
@@ -441,86 +448,94 @@ function quick_cancel(x, y)
 end
 
 # ispow(x) case
-function quick_pow(x, y)
-    x.exp isa Number || return (x, y)
-    isequal(x.base, y) && x.exp >= 1 ? (Pow{symtype(x)}(x.base, x.exp - 1),1) : (x, y)
+function quick_pow(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
+    isval(x.exp) || return (x, y)
+    _y = convert(BasicSymbolic{T1}, y)
+    if isequal(x.base, _y) && x.exp.value >= one(T1)
+        return Pow{T1}(x.base, x.exp.value - 1), Value{T2}(1)
+    else
+        return x, y
+    end
 end
 
 # Double Pow case
-function quick_powpow(x, y)
+function quick_powpow(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
     if isequal(x.base, y.base)
-        !(x.exp isa Number && y.exp isa Number) && return (x, y)
-        if x.exp > y.exp
-            return Pow{symtype(x)}(x.base, x.exp-y.exp), 1
-        elseif x.exp == y.exp
-            return 1, 1
+        !(isval(x.exp) && isval(y.exp)) && return (x, y)
+        if x.exp.value > y.exp.value
+            return Pow{T1}(x.base, x.exp.value-y.exp.value), Value{T2}(1)
+        elseif x.exp.value == y.exp.value
+            return Value{T1}(1), Value{T2}(1)
         else # x.exp < y.exp
-            return 1, Pow{symtype(y)}(y.base, y.exp-x.exp)
+            return Value{T1}(1), Pow{T2}(y.base, y.exp.value-x.exp.value)
         end
     end
     return x, y
 end
 
 # ismul(x)
-function quick_mul(x, y)
-    if haskey(x.dict, y) && x.dict[y] >= 1
+function quick_mul(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
+    _y = convert(BasicSymbolic{T1}, y)
+    if haskey(x.dict, _y) && x.dict[_y] >= 1
         d = copy(x.dict)
-        if d[y] > 1
-            d[y] -= 1
-        elseif d[y] == 1
-            delete!(d, y)
+        if d[_y] > 1
+            d[_y] -= 1
+        elseif d[_y] == 1
+            delete!(d, _y)
         else
             error("Can't reach")
         end
 
-        return Mul(symtype(x), x.coeff, d), 1
+        return Mul(T1, x.coeff, d), Value{T2}(1)
     else
         return x, y
     end
 end
 
 # mul, pow case
-function quick_mulpow(x, y)
-    y.exp isa Number || return (x, y)
-    if haskey(x.dict, y.base)
+function quick_mulpow(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
+    isval(y.exp) || return (x, y)
+    _ybase = convert(BasicSymbolic{T1}, y.base)
+    if haskey(x.dict, _ybase)
         d = copy(x.dict)
-        if x.dict[y.base] > y.exp
-            d[y.base] -= y.exp
-            den = 1
-        elseif x.dict[y.base] == y.exp
-            delete!(d, y.base)
-            den = 1
+        if x.dict[_ybase] > y.exp.value
+            d[_ybase] -= y.exp.value
+            den = Value{T2}(1)
+        elseif x.dict[_ybase] == y.exp.value
+            delete!(d, _ybase)
+            den = Value{T2}(1)
         else
-            den = Pow{symtype(y)}(y.base, y.exp-d[y.base])
+            den = Pow{T2}(_ybase, y.exp.value - d[_ybase])
             delete!(d, y.base)
         end
-        return Mul(symtype(x), x.coeff, d), den
+        return Mul(T1, x.coeff, d), den
     else
         return x, y
     end
 end
 
 # Double mul case
-function quick_mulmul(x, y)
+function quick_mulmul(x::BasicSymbolic{T1}, y::BasicSymbolic{T2})::Tuple{BasicSymbolic{T1}, BasicSymbolic{T2}} where {T1, T2}
     num_dict, den_dict = _merge_div(x.dict, y.dict)
-    Mul(symtype(x), x.coeff, num_dict), Mul(symtype(y), y.coeff, den_dict)
+    Mul(T1, x.coeff, num_dict), Mul(T1, y.coeff, den_dict)
 end
 
-function _merge_div(ndict, ddict)
+function _merge_div(ndict::DictType{T1}, ddict::DictType{T2})::Tuple{DictType{T1}, DictType{T2}} where {T1, T2}
     num = copy(ndict)
     den = copy(ddict)
     for (k, v) in den
-        if haskey(num, k)
-            nk = num[k]
+        _k = convert(BasicSymbolic{T1}, k)
+        if haskey(num, _k)
+            nk = num[_k]
             if nk > v
-                num[k] -= v
+                num[_k] -= v
                 delete!(den, k)
             elseif nk == v
-                delete!(num, k)
+                delete!(num, _k)
                 delete!(den, k)
             else
                 den[k] -= nk
-                delete!(num, k)
+                delete!(num, _k)
             end
         end
     end
