@@ -430,24 +430,18 @@ function isequal_bsimpl(a::BSImpl.Type, b::BSImpl.Type, val)
             isequal(f1, f2)::Bool && isequal(args1, args2) && s1 == s2
         end
         (BSImpl.AddOrMul(; variant = v1, dict = d1, coeff = c1), BSImpl.AddOrMul(; variant = v2, dict = d2, coeff = c2)) => begin
-            # @show v1 == v2
-            # @show isequal_symdict(d1, d2, val)
-            # @show isequal(c1, c2)
-            v1 == v2 && isequal_symdict(d1, d2, val) && isequal(c1, c2)
+            v1 == v2 && isequal_symdict(d1, d2, val) && isequal_maybe_scal(c1, c2)
         end
         (BSImpl.Div(; num = n1, den = d1), BSImpl.Div(; num = n2, den = d2)) => begin
-            isequal(n1, n2) && isequal(d1, d2)
+            isequal_maybe_scal(n1, n2) && isequal_maybe_scal(d1, d2)
         end
         (BSImpl.Pow(; base = n1, exp = d1), BSImpl.Pow(; base = n2, exp = d2)) => begin
-            isequal(n1, n2) && isequal(d1, d2)
+            isequal_maybe_scal(n1, n2) && isequal_maybe_scal(d1, d2)
         end
-        _ => throw(UnimplementedForVariantError(isequal_core, Ta))
     end
-    # @show partial, full
     if full && partial
         partial = isequal(metadata(a), metadata(b))
     end
-    # @show "L"
     return partial
 end
 
