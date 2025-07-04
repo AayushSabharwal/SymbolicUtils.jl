@@ -382,7 +382,10 @@ end
 
 function fraction_iszero(x)
     !iscall(x) && return _iszero(x)
+    old_hc = ENABLE_HASHCONSING[]
+    ENABLE_HASHCONSING[] = false
     ff = flatten_fractions(x)
+    ENABLE_HASHCONSING[] = old_hc
     # fast path and then slow path
     any(_iszero, numerators(ff)) ||
     any(_iszero∘expand, numerators(ff))
