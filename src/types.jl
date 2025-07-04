@@ -84,28 +84,28 @@ Core ADT for `BasicSymbolic`. `hash` and `isequal` compare metadata.
     struct Sym
         const name::Symbol
         const metadata::MetadataT
-        hash2::UInt
         const shape::ShapeT
+        hash2::UInt
         id::IdentT
     end
     struct Term
         const f::Any
         const args::ArgsT
         const metadata::MetadataT
+        const shape::ShapeT
         hash::UInt
         hash2::UInt
-        const shape::ShapeT
         id::IdentT
     end
     struct AddOrMul
         const variant::AddMulVariant.T
         const coeff::T
         const dict::RODict{Symbolic, T}
-        const args::ArgsT
         const metadata::MetadataT
+        const shape::ShapeT
+        const args::ArgsT
         hash::UInt
         hash2::UInt
-        const shape::ShapeT
         id::IdentT
     end
     struct Div
@@ -119,16 +119,16 @@ Core ADT for `BasicSymbolic`. `hash` and `isequal` compare metadata.
         # algorithms to not try to eliminate more.
         const simplified::Bool
         const metadata::MetadataT
-        hash2::UInt
         const shape::ShapeT
+        hash2::UInt
         id::IdentT
     end
     struct Pow
         const base::Any
         const exp::Any
         const metadata::MetadataT
-        hash2::UInt
         const shape::ShapeT
+        hash2::UInt
         id::IdentT
     end
 end
@@ -203,17 +203,22 @@ override_properties(obj::BSImpl.Type) = override_properties(MData.variant_type(o
 
 function override_properties(obj::Type{<:BSImpl.Variant})
     @match obj begin
-        # Type{<:BSImpl.Const} => (; id = Ref{IdentT}(nothing))
-        # ::Type{<:BSImpl.Sym} => (; id = Ref{IdentT}(nothing), hash2 = Ref{UInt}(0))
-        # ::Type{<:BSImpl.Term} => (; id = Ref{IdentT}(nothing), hash = Ref{UInt}(0), hash2 = Ref{UInt}(0))
-        # ::Type{<:BSImpl.AddOrMul} => (; id = Ref{IdentT}(nothing), hash = Ref{UInt}(0), hash2 = Ref{UInt}(0))
-        # ::Type{<:BSImpl.Div} => (; id = Ref{IdentT}(nothing), hash2 = Ref{UInt}(0))
-        # ::Type{<:BSImpl.Pow} => (; id = Ref{IdentT}(nothing), hash2 = Ref{UInt}(0))
         ::Type{<:BSImpl.Sym} => (; id = nothing, hash2 = 0)
         ::Type{<:BSImpl.Term} => (; id = nothing, hash = 0, hash2 = 0)
         ::Type{<:BSImpl.AddOrMul} => (; id = nothing, hash = 0, hash2 = 0)
         ::Type{<:BSImpl.Div} => (; id = nothing, hash2 = 0)
         ::Type{<:BSImpl.Pow} => (; id = nothing, hash2 = 0)
+        _ => throw(UnimplementedForVariantError(override_properties, obj))
+    end
+end
+
+function ordered_override_properties(obj::Type{<:BSImpl.Variant})
+    @match obj begin
+        ::Type{<:BSImpl.Sym} => (0, nothing)
+        ::Type{<:BSImpl.Term} => (0, 0, nothing)
+        ::Type{<:BSImpl.AddOrMul} => (ArgsT(), 0, 0, nothing)
+        ::Type{<:BSImpl.Div} => (0, nothing)
+        ::Type{<:BSImpl.Pow} => (0, nothing)
         _ => throw(UnimplementedForVariantError(override_properties, obj))
     end
 end
@@ -419,10 +424,8 @@ function isequal_symdict(a::Dict, b::Dict, val)
 end
 
 function isequal_bsimpl(a::BSImpl.Type, b::BSImpl.Type, val)
-    # @show "E"
     full = isone(val)
     partial = @match (a, b) begin
-        # (BSImpl.Const(; val = v1), BSImpl.Const(; val = v2)) => return isequal(v1, v2)
         (BSImpl.Sym(; name = n1, shape = s1), BSImpl.Sym(; name = n2, shape = s2)) => begin
             n1 === n2 && s1 == s2
         end
@@ -808,34 +811,38 @@ end
 
 function BSImpl.Sym{T}(name::Symbol; metadata = nothing, shape = default_shape(T)) where {T}
     metadata = parse_metadata(metadata)
-    hashcons(BSImpl.Sym{T}(; name, metadata, shape, override_properties(BSImpl.Sym{T})...))
+    props = ordered_override_properties(BSImpl.Sym)
+    hashcons(BSImpl.Sym{T}(name, metadata, shape, props...))
 end
 
 function BSImpl.Term{T}(f, args; metadata = nothing, shape = default_shape(T)) where {T}
     metadata = parse_metadata(metadata)
     args = parse_args(args)
-    hashcons(BSImpl.Term{T}(; f, args, metadata, shape, override_properties(BSImpl.Term{T})...))
+    props = ordered_override_properties(BSImpl.Term)
+    hashcons(BSImpl.Term{T}(f, args, metadata, shape, props...))
 end
 
 function BSImpl.AddOrMul{T}(variant::AddMulVariant.T, coeff::T, dict::AbstractDict; metadata = nothing, shape = default_shape(T)) where {T}
     metadata = parse_metadata(metadata)
     dict = parse_dict(T, dict)
-    args = ArgsT()
-    hashcons(BSImpl.AddOrMul{T}(; variant, coeff, dict, args, metadata, shape, override_properties(BSImpl.AddOrMul{T})...))
+    props = ordered_override_properties(BSImpl.AddOrMul)
+    hashcons(BSImpl.AddOrMul{T}(variant, coeff, dict, metadata, shape, props...))
 end
 
 function BSImpl.Div{T}(num, den, simplified::Bool; metadata = nothing, shape = default_shape(T)) where {T}
     metadata = parse_metadata(metadata)
     num = parse_maybe_symbolic(num)
     den = parse_maybe_symbolic(den)
-    hashcons(BSImpl.Div{T}(; num, den, simplified, metadata, shape, override_properties(BSImpl.Div{T})...))
+    props = ordered_override_properties(BSImpl.Div)
+    hashcons(BSImpl.Div{T}(num, den, simplified, metadata, shape, props...))
 end
 
 function BSImpl.Pow{T}(base, exp; metadata = nothing, shape = default_shape(T)) where {T}
     metadata = parse_metadata(metadata)
     base = parse_maybe_symbolic(base)
     exp = parse_maybe_symbolic(exp)
-    hashcons(BSImpl.Pow{T}(; base, exp, metadata, shape, override_properties(BSImpl.Pow{T})...))
+    props = ordered_override_properties(BSImpl.Pow)
+    hashcons(BSImpl.Pow{T}(base, exp, metadata, shape, props...))
 end
 
 # struct Const{T} end
