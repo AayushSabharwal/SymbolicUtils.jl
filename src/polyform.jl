@@ -288,22 +288,6 @@ function simplify_div(d)
     end
 end
 
-#add_divs(x::Div, y::Div) = (x.num * y.den + y.num * x.den) / (x.den * y.den)
-#add_divs(x::Div, y) = (x.num + y * x.den) / x.den
-#add_divs(x, y::Div) = (x * y.den + y.num) / y.den
-#add_divs(x, y) = x + y
-function add_divs(x, y)
-    if isdiv(x) && isdiv(y)
-        return (x.num * y.den + y.num * x.den) / (x.den * y.den)
-    elseif isdiv(x)
-        return (x.num + y * x.den) / x.den
-    elseif isdiv(y)
-        return (x * y.den + y.num) / y.den
-    else
-        x + y
-    end
-end
-
 function frac_maketerm(T, f, args, metadata)
     # TODO add stype to T?
     if f in (*, /, \, +, -)
@@ -347,16 +331,40 @@ function add_with_div(x, flatten=true)
     (!iscall(x) || operation(x) != (+)) && return x
     aa = parent(arguments(x))
     !any(isdiv, aa) && return x # no rewrite necessary
-    nondiv_result = 0
-    div_result = 0
+
+    # find and multiply all denominators
+    dens = ArgsT()
     for a in aa
-        if isdiv(a)
-            div_result = quick_cancel(add_divs(div_result, a))
-        else
-            nondiv_result += a
-        end
+        isdiv(a) || continue
+        push!(dens, a.den)
     end
-    flatten ? quick_cancel(add_divs(div_result, nondiv_result)) : div_result + nondiv_result
+    den = mul_worker(dens)
+
+    # add all numerators
+    div_idx = 1
+    nums = ArgsT()
+    for a in aa
+        # if it is a division, we don't want to multiply the numerator by
+        # its own denominator, so temporarily overwrite the index in `dens`
+        # that is the denominator of this term (tracked by `div_idx`), multiply
+        # and voila! numerator. Remember to reset `dens` at the end.
+        if isdiv(a)
+            _den = dens[div_idx]
+            dens[div_idx] = a.num
+            _num = mul_worker(dens)
+            dens[div_idx] = _den
+            div_idx += 1
+        else
+            _num = den * a
+        end
+        push!(nums, _num)
+    end
+    num = add_worker(nums)
+
+    if flatten
+        num, den = quick_cancel(num, den)
+    end
+    return num / den
 end
 """
     flatten_fractions(x)
