@@ -110,6 +110,7 @@ include("printing.jl")
 
 export BS
 include("syms.jl")
+include("arrayop.jl")
 
 # Methods on symbolic objects
 using SpecialFunctions, NaNMath
