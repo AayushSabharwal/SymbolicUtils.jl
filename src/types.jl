@@ -925,7 +925,15 @@ end
     return var
 end
 
-@inline function BSImpl.ArrayOp{T}(output_idx, expr::BasicSymbolic{T}, reduce, term, ranges; metadata = nothing, type, shape = default_shape(type), unsafe = false) where {T}
+const DEFAULT_RANGES_SYMREAL = RangesT{SymReal}()
+const DEFAULT_RANGES_SAFEREAL = RangesT{SafeReal}()
+const DEFAULT_RANGES_TREEREAL = RangesT{TreeReal}()
+
+default_ranges(::Type{SymReal}) = DEFAULT_RANGES_SYMREAL
+default_ranges(::Type{SafeReal}) = DEFAULT_RANGES_SAFEREAL
+default_ranges(::Type{TreeReal}) = DEFAULT_RANGES_TREEREAL
+
+@inline function BSImpl.ArrayOp{T}(output_idx, expr::BasicSymbolic{T}, reduce, term, ranges = default_ranges(T); metadata = nothing, type, shape = default_shape(type), unsafe = false) where {T}
     metadata = parse_metadata(metadata)
     output_idx = parse_output_idxs(T, output_idx)
     term = unwrap_const(unwrap(term))
@@ -1109,7 +1117,7 @@ function getbuffer(ix::IndexedAxes{T}) where {T}
     if isempty(ix.buffers)
         return IndexedAxis{T}[]
     else
-        pop!(ix.buffers)
+        return empty!(pop!(ix.buffers))
     end
 end
 
@@ -1166,7 +1174,7 @@ function get_indexed_axes!(ix::IndexedAxes{T}, expr::BasicSymbolic{T}) where {T}
         idxsym = first(vars)
         _pad = idx - idxsym
         # either it's `i + offset` in a non-special-cased form, or it's a more complicated function
-        # and we use `typemin(Int)` as a sentinel.
+        # and we use `nothing` as a sentinel.
         pad = isconst(_pad) ? Int(unwrap_const(_pad)) : nothing
         ix[first(vars)] = IndexedAxis(sym, dim, pad)
     end
@@ -1210,15 +1218,17 @@ function arrayop_shape(output_idx::AbstractVector, expr::BasicSymbolic{T}, range
             sh isa Unknown && continue
             sh = sh::ShapeVecT
             if is_bound
-                if !issubset(reference_axis, sh[iaxis.dim])
+                iaxis.pad === nothing && continue
+                if !issubset(reference_axis .+ iaxis.pad, sh[iaxis.dim])
                     throw(ArgumentError("""
-                    Expected bound range $reference_axis of $idxsym to be within bounds \
+                    Expected bound range $reference_axis of $idxsym with offset \
+                    $(iaxis.pad) to be within bounds \
                     of dimension $(iaxis.dim) of variable $(iaxis.sym) ($(sh[iaxis.dim])) \
                     where it is used.
                     """))
                 end
             else
-                if !isequal(reference_axis, sh[iaxis.dim])
+                if !isequal(length(reference_axis), length(sh[iaxis.dim]))
                     throw(ArgumentError("""
                     Expected all usages of index variable $idxsym be in axes of equal \
                     range. Found usage in dimension $(iaxis.dim) of variable $(iaxis.sym) \
@@ -1236,7 +1246,7 @@ function arrayop_shape(output_idx::AbstractVector, expr::BasicSymbolic{T}, range
             push!(result, 1:1)
         elseif idx isa BasicSymbolic{T}
             if haskey(ranges, idx)
-                push!(result, ranges[idx])
+                push!(result, 1:length(ranges[idx]))
                 continue
             end
             if !haskey(idx_to_axes, idx)
