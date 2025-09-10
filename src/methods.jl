@@ -439,7 +439,6 @@ function _copy_broadcast!(buffer::BroadcastBuffer{T}, bc::Broadcast.Broadcasted{
         maybe_reallocate_getindex_buffer!(buffer, indexed_arg)
         push!(args, indexed_arg)
     end
-    resize!(buffer.canonical_args, length(buffer.canonical_args) - length(bc.args))
     output_idxs = OutIdxT{T}()
     for (i, ax) in enumerate(bc.axes)
         push!(output_idxs, length(ax) == 1 ? 1 : subscripts[i])
@@ -448,7 +447,7 @@ function _copy_broadcast!(buffer::BroadcastBuffer{T}, bc::Broadcast.Broadcasted{
     maybe_reallocate_args_buffer!(buffer, expr)
     args = buffer.args
     push!(args, Const{T}(bc.f))
-    for arg in bc.args
+    for arg in canonical_args
         push!(args, Const{T}(arg))
     end
     sh = ShapeVecT()
@@ -458,6 +457,7 @@ function _copy_broadcast!(buffer::BroadcastBuffer{T}, bc::Broadcast.Broadcasted{
     type = Array{eltype(symtype(expr)), ndim}
     term = Term{T}(broadcast, args; type, shape = sh)
     maybe_reallocate_args_buffer!(buffer, term)
+    resize!(buffer.canonical_args, length(buffer.canonical_args) - length(bc.args))
 
     return BSImpl.ArrayOp{T}(output_idxs, expr, +, term; type, shape = sh)
 end
