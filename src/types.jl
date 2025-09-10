@@ -1106,14 +1106,16 @@ struct IndexedAxis{T}
     pad::Union{Int, Nothing}
 end
 
+const IdxToAxesT{T} = Dict{BasicSymbolic{T}, Vector{IndexedAxis{T}}}
+
 struct IndexedAxes{T}
-    idx_to_axes::Dict{BasicSymbolic{T}, Vector{IndexedAxis{T}}}
+    idx_to_axes::IdxToAxesT{T}
     search_buffer::Set{BasicSymbolic{T}}
     buffers::Vector{Vector{IndexedAxis{T}}}
 end
 
 function IndexedAxes{T}() where {T}
-    IndexedAxes{T}(Dict{BasicSymbolic{T}, Vector{IndexedAxis{T}}}(), Set{BasicSymbolic{T}}(), Vector{IndexedAxis{T}}[])
+    IndexedAxes{T}(IdxToAxesT{T}(), Set{BasicSymbolic{T}}(), Vector{IndexedAxis{T}}[])
 end
 
 function Base.empty!(ix::IndexedAxes)
