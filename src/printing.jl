@@ -173,7 +173,7 @@ end
 
 const SHOW_ARRAYOP = Ref{Bool}(false)
 function show_arrayop(io::IO, aop::BasicSymbolic)
-    if iscall(aop.term) && !show_arrayop[]
+    if iscall(aop.term) && !SHOW_ARRAYOP[]
         show(io, aop.term)
     else
         print(io, "@arrayop")
