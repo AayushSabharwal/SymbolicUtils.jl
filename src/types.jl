@@ -332,7 +332,13 @@ end
             AddMulVariant.MUL => (*)
         end
         BSImpl.Div(_) => (/)
-        BSImpl.ArrayOp(_) => ArrayOp{T}
+        BSImpl.ArrayOp(; term) => begin
+            if term === nothing
+                ArrayOp{T}
+            elseif term isa BasicSymbolic{T}
+                operation(term)
+            end
+        end
         _ => throw(UnimplementedForVariantError(operation, MData.variant_type(x)))
     end
 end
@@ -387,13 +393,17 @@ function TermInterface.arguments(x::BSImpl.Type{T})::ROArgsT{T} where {T}
         end
         BSImpl.Div(num, den) => ROArgsT{T}(ArgsT{T}((num, den)))
         BSImpl.ArrayOp(; output_idx, expr, reduce, term, ranges, shape, type, args) => begin
-            isempty(args) || return ROArgsT{T}(args)
-            push!(args, Const{T}(output_idx))
-            push!(args, Const{T}(expr))
-            push!(args, Const{T}(reduce))
-            push!(args, Const{T}(term))
-            push!(args, Const{T}(ranges))
-            return ROArgsT{T}(args)
+            if term === nothing
+                isempty(args) || return ROArgsT{T}(args)
+                push!(args, Const{T}(output_idx))
+                push!(args, Const{T}(expr))
+                push!(args, Const{T}(reduce))
+                push!(args, Const{T}(term))
+                push!(args, Const{T}(ranges))
+                return ROArgsT{T}(args)
+            elseif term isa BasicSymbolic{T}
+                return arguments(term)
+            end
         end
         _ => throw(UnimplementedForVariantError(arguments, MData.variant_type(x)))
     end
